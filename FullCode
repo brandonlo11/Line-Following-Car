@@ -1,0 +1,192 @@
+
+#include <ECE3.h>
+
+const int left_nslp_pin=31; // nslp ==> awake & ready for PWM
+const int left_dir_pin=29;
+const int left_pwm_pin=40;
+
+const int right_nslp_pin=11; // nslp ==> awake & ready for PWM
+const int right_dir_pin=30;
+const int right_pwm_pin=39;
+
+const int LED_RF = 41;
+
+int defaultSpeed = 35;
+
+///////////////////////////////////
+
+
+uint16_t sensorValues[8];
+float avgValues[8];
+float errorReading;
+float errorMult[8] = {-8,-5.6,-2.8,-.8,.8,2.8,5.6,8};
+float delta_errors[3] = {0,0,0};
+float oldError;
+int runCount = 0;
+int lineCount = 0;
+float readingSum = 0;
+float prevSum = 0;
+
+void setup() {
+// put your setup code here, to run once:
+  pinMode(left_nslp_pin,OUTPUT);
+  pinMode(left_dir_pin,OUTPUT);
+  pinMode(left_pwm_pin,OUTPUT);
+  
+  pinMode(right_nslp_pin,OUTPUT);
+  pinMode(right_dir_pin,OUTPUT);
+  pinMode(right_pwm_pin,OUTPUT);
+
+  digitalWrite(left_dir_pin,LOW);
+  digitalWrite(left_nslp_pin,HIGH);
+  digitalWrite(right_dir_pin,LOW);
+  digitalWrite(right_nslp_pin,HIGH);
+
+  pinMode(LED_RF, OUTPUT);
+  
+  ECE3_Init();
+
+// set the data rate in bits/second for serial data transmission
+  delay(2000); //Wait 2 seconds before starting 
+  
+}
+
+void loop() {
+  ECE3_read_IR(sensorValues);
+  for (unsigned char i = 0; i < 8; i++)
+  {
+    avgValues[i] = sensorValues[i];
+  }
+
+   readingSum = 0;
+
+   oldError = errorReading;
+   errorReading = 0;
+   for (int i = 0; i < 8; i++) {
+      errorReading += avgValues[i]*errorMult[i];
+      readingSum += avgValues[i];
+   }
+   errorReading /= 8;
+
+
+   if(readingSum >= 14000 && prevSum > 14000){
+     if(lineCount == 1){
+      int speed = defaultSpeed;
+      while(speed > 0){
+        analogWrite(left_pwm_pin,0);
+        analogWrite(right_pwm_pin, 0);
+        speed *= .95;
+      }
+      delay(200000);
+    }
+    if(lineCount == 0){
+      digitalWrite(left_dir_pin,HIGH);
+      analogWrite(left_pwm_pin, 75);
+      analogWrite(right_pwm_pin, 75);
+      delay(700);
+      digitalWrite(left_dir_pin,LOW);
+      lineCount++;
+    }
+  } 
+
+  float errorConstant = 0;
+  float dConstant = 0;
+  if(getEncoderCount_left()){ // Starting and ending 
+    defaultSpeed = 130;
+    errorConstant = 0.045;
+    dConstant = 0.65;
+  }
+  if(getEncoderCount_left() > 600 && getEncoderCount_left() < 950){ // first sharp turn
+    defaultSpeed = 75; // Starting turns
+    errorConstant = 0.06;
+    dConstant = 0.4;
+  }
+  if(getEncoderCount_left() > 950 && getEncoderCount_left() < 1300){ // first sharp turn
+    defaultSpeed = 55; // Starting turns
+    errorConstant = 0.09;
+    dConstant = 0.4;
+  }
+  if(getEncoderCount_left() > 1300 && getEncoderCount_left() < 1400){ // first sharp turn
+    defaultSpeed = 100; // Starting turns
+    errorConstant = 0.06;
+    dConstant = 1.2;
+  }
+  else if(getEncoderCount_left() > 1400 && getEncoderCount_left() < 3250){ // first straightaway
+    defaultSpeed = 220;
+    errorConstant = 0.06;
+    dConstant = 1.2;
+  }
+  else if(getEncoderCount_left() > 3250 && getEncoderCount_left() < 4800){ // First big curve
+    defaultSpeed = 200;
+    errorConstant = 0.15;
+    dConstant = 1.1;
+  }
+  else if(getEncoderCount_left() > 4800 && getEncoderCount_left() < 5600){ // First big curve
+    defaultSpeed = 180;
+    errorConstant = 0.17;
+    dConstant = 1.6;
+  }
+  else if(getEncoderCount_left() > 5600 && getEncoderCount_left() < 6300){ // Sharp part of turnaround
+    defaultSpeed = 80;
+    errorConstant = 0.08;
+    dConstant = 0.1;
+  }
+  else if(getEncoderCount_left() > 6300 && getEncoderCount_left() < 7500){ // Turnaround straight
+    defaultSpeed = 85;
+    errorConstant = 0.065;
+    dConstant = 0.15;
+  }
+  else if(getEncoderCount_left() > 7500 && getEncoderCount_left() < 7600){ // Sharp part of turnaround
+    defaultSpeed = 85;
+    errorConstant = 0.1;
+    dConstant = 0.45;
+  }
+  else if(getEncoderCount_left() > 7600 && getEncoderCount_left() < 9100){ // Second big curve
+    defaultSpeed = 190;
+    errorConstant = 0.12;
+    dConstant = 1.1;
+  }
+  else if (getEncoderCount_left() > 9100 &&getEncoderCount_left() < 11000){ // Second straightaway
+    defaultSpeed = 220;
+    errorConstant = 0.06;
+    dConstant = 1.2;
+  }
+  else if (getEncoderCount_left() > 11000 &&getEncoderCount_left() < 11350){ // Second straightaway
+    defaultSpeed = 220;
+    errorConstant = 0.06;
+    dConstant = 1.2;
+  }
+  else if (getEncoderCount_left() > 11350 && getEncoderCount_left() < 11400){ // Second sharp turn
+    defaultSpeed = 75;
+    errorConstant = 0.07;
+    dConstant = 0.4;
+  }
+  else if(getEncoderCount_left() > 11400 && getEncoderCount_left() < 11800){ // Second sharp turn 
+    defaultSpeed = 75;
+    errorConstant = 0.095;
+    dConstant = 0.45;
+  }
+  else if(getEncoderCount_left() > 11800){ // Starting and ending 
+    defaultSpeed = 140;
+    errorConstant = 0.045;
+    dConstant = 0.65;
+  }
+  
+
+  float dError = errorReading - oldError;
+
+  float correction = errorConstant*errorReading + dConstant*dError;
+  if(defaultSpeed + correction > 255){
+    correction -= (defaultSpeed + correction - 255);
+  }
+  if(defaultSpeed - correction < 0){
+    correction = defaultSpeed;
+  }
+  analogWrite(left_pwm_pin,defaultSpeed - correction);
+  analogWrite(right_pwm_pin,defaultSpeed + correction);
+
+   runCount++;
+   prevSum = readingSum;
+ }
+
+  
